@@ -1,42 +1,33 @@
 #include <iostream>
 #include <string>
-#include <stdexcept>
 #include <vector>
 #include <fstream>
-#include <ctime>
+#include <stdexcept>
 #include <iomanip>
-#include <thread>
-#include <chrono>
-
+#include <sstream>
 using namespace std;
 
-// =============================================
-// CLASE TAREA - REPRESENTA CADA PROCESO DEL SISTEMA
-// =============================================
+// CLASE TAREA
 class Tarea {
 public:
     string nombre;
-    int prioridad;  // 1-10 (10 = máxima prioridad)
+    int prioridad;
     int cpu_necesario;
-    string timestamp;
-    bool ejecutada;
+    string estado;
     
-    Tarea(string n, int p, int cpu) {
-        nombre = n;
-        prioridad = p;
-        cpu_necesario = cpu;
-        ejecutada = false;
-        
-        // Generar timestamp automático
-        time_t now = time(0);
-        timestamp = ctime(&now);
-        timestamp.pop_back(); // Remover salto de línea
+    Tarea(string n, int p, int cpu) : nombre(n), prioridad(p), cpu_necesario(cpu), estado("Pendiente") {}
+    
+    bool operator<(const Tarea& otra) const {
+        return prioridad < otra.prioridad;
+    }
+    
+    string toString() const {
+        return nombre + " | Prioridad: " + to_string(prioridad) + 
+               " | CPU: " + to_string(cpu_necesario) + "% | Estado: " + estado;
     }
 };
 
-// =============================================
-// SKEW HEAP - ALGORITMO PRINCIPAL DE PRIORIZACIÓN
-// =============================================
+// SKEW HEAP CORREGIDO
 class SkewHeap {
 private:
     struct Nodo {
@@ -47,43 +38,45 @@ private:
     };
     
     Nodo* raiz;
+    int tareasPendientes;
+    int tareasEjecutadas;
     
-    // Función recursiva para mezclar dos heaps
     Nodo* mezclar(Nodo* h1, Nodo* h2) {
         if (!h1) return h2;
         if (!h2) return h1;
         
-        // Mantener propiedad de heap: mayor prioridad en raíz
         if (h1->tarea.prioridad < h2->tarea.prioridad) {
             swap(h1, h2);
         }
         
-        // Intercambiar hijos y mezclar recursivamente
         swap(h1->izquierdo, h1->derecho);
         h1->izquierdo = mezclar(h2, h1->izquierdo);
         
         return h1;
     }
     
+    void destruirHeap(Nodo* nodo) {
+        if (nodo) {
+            destruirHeap(nodo->izquierdo);
+            destruirHeap(nodo->derecho);
+            delete nodo;
+        }
+    }
+    
 public:
-    vector<Tarea> tareasInsertadas;
-    vector<string> logEjecucion;
-    int cpuTotalUtilizado;
+    SkewHeap() : raiz(nullptr), tareasPendientes(0), tareasEjecutadas(0) {}
     
-    SkewHeap() : raiz(nullptr), cpuTotalUtilizado(0) {}
+    ~SkewHeap() {
+        destruirHeap(raiz);
+    }
     
-    // INSERTAR nueva tarea en el heap
     void insertar(Tarea tarea) {
         Nodo* nuevoNodo = new Nodo(tarea);
         raiz = mezclar(raiz, nuevoNodo);
-        
-        tareasInsertadas.push_back(tarea);
-        string mensaje = "INSERTADA: " + tarea.nombre + " (Prioridad: " + to_string(tarea.prioridad) + ") - " + tarea.timestamp;
-        logEjecucion.push_back(mensaje);
-        cout << "✅ " << mensaje << endl;
+        tareasPendientes++;
+        cout << "✅ Tarea INSERTADA: " << tarea.nombre << " (Prioridad: " << tarea.prioridad << ")" << endl;
     }
     
-    // EXTRAER la tarea de MÁXIMA prioridad
     Tarea extraerMaxima() {
         if (!raiz) {
             throw runtime_error("No hay tareas en el heap");
@@ -91,276 +84,187 @@ public:
         
         Tarea maxima = raiz->tarea;
         raiz = mezclar(raiz->izquierdo, raiz->derecho);
-        
-        // Marcar como ejecutada
-        for (auto& tarea : tareasInsertadas) {
-            if (tarea.nombre == maxima.nombre && tarea.timestamp == maxima.timestamp) {
-                tarea.ejecutada = true;
-                break;
-            }
-        }
-        
-        cpuTotalUtilizado += maxima.cpu_necesario;
-        string mensaje = "EJECUTADA: " + maxima.nombre + " (Prioridad: " + to_string(maxima.prioridad) + ")";
-        logEjecucion.push_back(mensaje);
-        cout << "🎯 " << mensaje << endl;
-        
+        tareasPendientes--;
+        tareasEjecutadas++;
+        cout << "🎯 EJECUTANDO: " << maxima.nombre << " (Prioridad: " << maxima.prioridad << ")" << endl;
         return maxima;
     }
     
-    bool estaVacia() {
+    // MÉTODOS CONST - ahora pueden ser usados con objetos constantes
+    int getTareasPendientes() const {
+        return tareasPendientes;
+    }
+    
+    int getTareasEjecutadas() const {
+        return tareasEjecutadas;
+    }
+    
+    bool estaVacia() const {
         return raiz == nullptr;
     }
     
-    int getTareasPendientes() {
-        int count = 0;
-        for (const auto& tarea : tareasInsertadas) {
-            if (!tarea.ejecutada) count++;
-        }
-        return count;
-    }
-    
-    int getTareasEjecutadas() {
-        int count = 0;
-        for (const auto& tarea : tareasInsertadas) {
-            if (tarea.ejecutada) count++;
-        }
-        return count;
+    int getTotalTareas() const {
+        return tareasPendientes + tareasEjecutadas;
     }
 };
 
-// =============================================
-// FUNCIONES AUXILIARES
-// =============================================
-
-// FUNCIÓN PARA MOSTRAR MENÚ DE TAREAS PREDEFINIDAS
-void mostrarMenuTareas() {
-    cout << "\n📋 TAREAS PREDEFINIDAS TESLA:\n";
-    cout << "1. Control de Frenos de Emergencia (Prioridad: 10)\n";
-    cout << "2. Detección de Peatones (Prioridad: 10)\n";
-    cout << "3. Navegación en Tiempo Real (Prioridad: 8)\n";
-    cout << "4. Monitoreo de Sensores (Prioridad: 7)\n";
-    cout << "5. Sistema de Entretenimiento (Prioridad: 3)\n";
-    cout << "6. Actualización de Mapas (Prioridad: 4)\n";
-    cout << "7. Tarea Personalizada (Ingresar manualmente)\n";
-    cout << "8. Mostrar Estadísticas Actuales\n";
-    cout << "0. Finalizar ingreso de tareas\n";
-}
-
-// FUNCIÓN PARA GENERAR REPORTE EN TXT
-void generarReporteTXT(const vector<string>& logEjecucion, int cpuTotal, int tareasEjecutadas, int tareasPendientes, const string& nombreArchivo = "reporte_tesla.txt") {
-    ofstream archivo(nombreArchivo);
-    
-    if (!archivo) {
-        cout << "❌ Error al crear el reporte" << endl;
-        return;
-    }
-    
-    time_t ahora = time(0);
-    
-    // Encabezado del reporte
-    archivo << "=============================================\n";
-    archivo << "         TESLA - REPORTE DEL SISTEMA\n";
-    archivo << "     Asignación de Recursos Computacionales\n";
-    archivo << "=============================================\n\n";
-    archivo << "Fecha de generación: " << ctime(&ahora);
-    archivo << "Total de tareas ejecutadas: " << tareasEjecutadas << "\n";
-    archivo << "Tareas pendientes: " << tareasPendientes << "\n";
-    archivo << "CPU total utilizado: " << cpuTotal << " unidades\n";
-    archivo << "Total de eventos: " << logEjecucion.size() << "\n\n";
-    archivo << "DETALLE DE EJECUCIÓN:\n";
-    archivo << "=====================\n";
-    
-    // Contenido del log
-    for (size_t i = 0; i < logEjecucion.size(); i++) {
-        archivo << i + 1 << ". " << logEjecucion[i] << "\n";
-    }
-    
-    archivo << "\n=============================================\n";
-    archivo << "           FIN DEL REPORTE\n";
-    archivo << "=============================================\n";
-    
-    archivo.close();
-    cout << "📄 Reporte generado: " << nombreArchivo << endl;
-}
-
-// FUNCIÓN PARA INGRESAR TAREAS MANUALMENTE
-Tarea ingresarTareaManual() {
-    string nombre;
-    int prioridad, cpu;
-    
-    cout << "\n➕ INGRESAR TAREA PERSONALIZADA:\n";
-    cout << "Nombre de la tarea: ";
-    cin.ignore();
-    getline(cin, nombre);
-    
-    cout << "Prioridad (1-10, 10=máxima): ";
-    cin >> prioridad;
-    
-    // Validar prioridad
-    while (prioridad < 1 || prioridad > 10) {
-        cout << "❌ Prioridad debe ser entre 1 y 10: ";
-        cin >> prioridad;
-    }
-    
-    cout << "Recursos CPU necesarios: ";
-    cin >> cpu;
-    
-    return Tarea(nombre, prioridad, cpu);
-}
-
-// FUNCIÓN PARA MOSTRAR ESTADÍSTICAS
+// FUNCIÓN DE ESTADÍSTICAS CORREGIDA
 void mostrarEstadisticas(const SkewHeap& gestorTareas) {
-    cout << "\n📊 ESTADÍSTICAS ACTUALES:\n";
+    cout << "\n=== ESTADÍSTICAS DEL SISTEMA ===\n";
     cout << "Tareas pendientes: " << gestorTareas.getTareasPendientes() << "\n";
     cout << "Tareas ejecutadas: " << gestorTareas.getTareasEjecutadas() << "\n";
-    cout << "CPU total utilizado: " << gestorTareas.cpuTotalUtilizado << "\n";
-    cout << "Total de eventos: " << gestorTareas.logEjecucion.size() << "\n";
+    cout << "Total de tareas: " << gestorTareas.getTotalTareas() << "\n";
     
-    if (gestorTareas.getTareasPendientes() + gestorTareas.getTareasEjecutadas() > 0) {
-        int porcentaje = (gestorTareas.getTareasEjecutadas() * 100) / 
-                        (gestorTareas.getTareasPendientes() + gestorTareas.getTareasEjecutadas());
+    int total = gestorTareas.getTotalTareas();
+    if (total > 0) {
+        int porcentaje = (gestorTareas.getTareasEjecutadas() * 100) / total;
         cout << "Progreso: " << porcentaje << "% completado\n";
-    }
-}
-
-// FUNCIÓN RECURSIVA PARA TAREAS CON DEPENDENCIAS
-void procesarTareaRecursivo(string nombreTarea, int nivel = 0) {
-    string indentacion(nivel * 2, ' ');
-    cout << indentacion << "🔁 PROCESANDO: " << nombreTarea << " (Nivel: " << nivel << ")" << endl;
-    
-    // SIMULAR SUBTAREAS (RECURSIVIDAD)
-    if (nombreTarea == "Esquivar Obstaculo") {
-        cout << indentacion << "  📋 Subtareas detectadas..." << endl;
-        procesarTareaRecursivo("Calcular Trayectoria", nivel + 1);
-        procesarTareaRecursivo("Preparar Sistema de Direccion", nivel + 1);
-        procesarTareaRecursivo("Ajustar Control de Velocidad", nivel + 1);
-    }
-    else if (nombreTarea == "Recalcular Ruta") {
-        procesarTareaRecursivo("Obtener Datos GPS", nivel + 1);
-        procesarTareaRecursivo("Analizar Trafico", nivel + 1);
+    } else {
+        cout << "Progreso: 0% (sin tareas)\n";
     }
     
-    cout << indentacion << "✅ COMPLETADO: " << nombreTarea << endl;
+    cout << "================================\n";
 }
 
-// =============================================
-// FUNCIÓN PRINCIPAL - INTERFAZ DINÁMICA
-// =============================================
-void sistemaGestionRecursos() {
-    cout << "==========================================\n";
-    cout << "🚗 SISTEMA TESLA - ASIGNACIÓN DE RECURSOS\n";
-    cout << "     (Versión Dinámica con Reportes)\n";
-    cout << "==========================================\n";
+// GESTOR DE REPORTES
+class GestorReportes {
+private:
+    string nombreArchivo;
+    
+    string obtenerFechaHora() {
+        time_t ahora = time(nullptr);
+        tm* tiempoLocal = localtime(&ahora);
+        stringstream ss;
+        ss << put_time(tiempoLocal, "%Y-%m-%d %H:%M:%S");
+        return ss.str();
+    }
+    
+public:
+    GestorReportes(string nombre = "reporte_tesla.txt") : nombreArchivo(nombre) {}
+    
+    void generarReporte(const SkewHeap& gestorTareas, const string& titulo = "REPORTE SISTEMA TESLA") {
+        ofstream archivo(nombreArchivo);
+        
+        if (!archivo.is_open()) {
+            throw runtime_error("Error al crear archivo de reporte");
+        }
+        
+        archivo << "==========================================\n";
+        archivo << "         " << titulo << "\n";
+        archivo << "==========================================\n";
+        archivo << "Fecha y hora: " << obtenerFechaHora() << "\n";
+        archivo << "Tareas pendientes: " << gestorTareas.getTareasPendientes() << "\n";
+        archivo << "Tareas ejecutadas: " << gestorTareas.getTareasEjecutadas() << "\n";
+        archivo << "Total de tareas: " << gestorTareas.getTotalTareas() << "\n";
+        archivo << "==========================================\n\n";
+        
+        archivo << "ESTADÍSTICAS:\n";
+        archivo << "-------------\n";
+        
+        int total = gestorTareas.getTotalTareas();
+        if (total > 0) {
+            int porcentaje = (gestorTareas.getTareasEjecutadas() * 100) / total;
+            archivo << "Progreso del sistema: " << porcentaje << "%\n";
+        } else {
+            archivo << "Progreso del sistema: 0%\n";
+        }
+        
+        archivo << "\nSistema " << (gestorTareas.estaVacia() ? "INACTIVO" : "ACTIVO") << "\n";
+        
+        archivo.close();
+        cout << "📄 Reporte generado: " << nombreArchivo << endl;
+    }
+};
+
+// INTERFAZ DE USUARIO
+class InterfazUsuario {
+public:
+    static void mostrarMenu() {
+        cout << "\n==========================================" << endl;
+        cout << "🚗 SISTEMA TESLA - GESTIÓN DE TAREAS" << endl;
+        cout << "==========================================" << endl;
+        cout << "1. Agregar nueva tarea" << endl;
+        cout << "2. Ejecutar siguiente tarea" << endl;
+        cout << "3. Mostrar estadísticas" << endl;
+        cout << "4. Generar reporte" << endl;
+        cout << "5. Salir" << endl;
+        cout << "==========================================" << endl;
+        cout << "Seleccione una opción: ";
+    }
+    
+    static Tarea solicitarTarea() {
+        string nombre;
+        int prioridad, cpu;
+        
+        cout << "\n--- AGREGAR NUEVA TAREA ---" << endl;
+        
+        cout << "Nombre de la tarea: ";
+        cin.ignore();
+        getline(cin, nombre);
+        
+        cout << "Prioridad (1-10, 10=máxima): ";
+        cin >> prioridad;
+        
+        while (prioridad < 1 || prioridad > 10) {
+            cout << "Error: La prioridad debe ser entre 1 y 10: ";
+            cin >> prioridad;
+        }
+        
+        cout << "Recurso CPU necesario (%): ";
+        cin >> cpu;
+        
+        while (cpu < 1 || cpu > 100) {
+            cout << "Error: El CPU debe ser entre 1% y 100%: ";
+            cin >> cpu;
+        }
+        
+        return Tarea(nombre, prioridad, cpu);
+    }
+};
+
+// SISTEMA PRINCIPAL
+int main() {
+    cout << "==========================================" << endl;
+    cout << "🚗 SISTEMA TESLA - GESTIÓN INTELIGENTE" << endl;
+    cout << "==========================================" << endl;
     
     SkewHeap gestorTareas;
+    GestorReportes gestorReportes;
     int opcion;
     
-    // FASE 1: INGRESO DINÁMICO DE TAREAS
-    cout << "\n📥 FASE 1: CONFIGURACIÓN DE TAREAS\n";
-    cout << "==================================\n";
-    
     do {
-        mostrarMenuTareas();
-        cout << "\nSeleccione una opción: ";
+        InterfazUsuario::mostrarMenu();
         cin >> opcion;
         
-        switch (opcion) {
-            case 1: 
-                gestorTareas.insertar(Tarea("Control de Frenos de Emergencia", 10, 30)); 
-                break;
-            case 2: 
-                gestorTareas.insertar(Tarea("Detección de Peatones", 10, 25)); 
-                break;
-            case 3: 
-                gestorTareas.insertar(Tarea("Navegación en Tiempo Real", 8, 20)); 
-                break;
-            case 4: 
-                gestorTareas.insertar(Tarea("Monitoreo de Sensores", 7, 15)); 
-                break;
-            case 5: 
-                gestorTareas.insertar(Tarea("Sistema de Entretenimiento", 3, 10)); 
-                break;
-            case 6: 
-                gestorTareas.insertar(Tarea("Actualización de Mapas", 4, 12)); 
-                break;
-            case 7: 
-                gestorTareas.insertar(ingresarTareaManual()); 
-                break;
-            case 8:
-                mostrarEstadisticas(gestorTareas);
-                break;
-            case 0: 
-                cout << "Finalizando ingreso de tareas...\n"; 
-                break;
-            default: 
-                cout << "❌ Opción inválida\n";
+        try {
+            switch (opcion) {
+                case 1:
+                    gestorTareas.insertar(InterfazUsuario::solicitarTarea());
+                    break;
+                case 2:
+                    if (!gestorTareas.estaVacia()) {
+                        gestorTareas.extraerMaxima();
+                    } else {
+                        cout << "⚠️  No hay tareas pendientes." << endl;
+                    }
+                    break;
+                case 3:
+                    mostrarEstadisticas(gestorTareas);
+                    break;
+                case 4:
+                    gestorReportes.generarReporte(gestorTareas);
+                    break;
+                case 5:
+                    cout << "👋 Saliendo del sistema..." << endl;
+                    break;
+                default:
+                    cout << "❌ Opción inválida!" << endl;
+            }
+        } catch (const exception& e) {
+            cout << "❌ Error: " << e.what() << endl;
         }
         
-        cout << endl;
-    } while (opcion != 0);
+    } while (opcion != 5);
     
-    // FASE 2: EJECUCIÓN AUTOMÁTICA
-    if (!gestorTareas.estaVacia()) {
-        cout << "\n🎯 FASE 2: EJECUCIÓN POR PRIORIDAD\n";
-        cout << "==================================\n";
-        cout << "El sistema ejecutará las tareas en orden de prioridad...\n\n";
-        
-        int contador = 1;
-        while (!gestorTareas.estaVacia()) {
-            cout << "[" << contador << "] ";
-            gestorTareas.extraerMaxima();
-            contador++;
-            
-            // Simular pequeño delay para efecto visual
-            #ifdef _WIN32
-                system("timeout 1 > nul");
-            #else
-                system("sleep 1");
-            #endif
-        }
-        
-        // FASE 3: DEMOSTRACIÓN DE RECURSIVIDAD
-        cout << "\n🔄 FASE 3: DEMOSTRACIÓN DE RECURSIVIDAD\n";
-        cout << "=====================================\n";
-        cout << "Simulando tarea compleja con dependencias...\n\n";
-        procesarTareaRecursivo("Esquivar Obstaculo");
-    }
-    
-    // FASE 4: GENERACIÓN DE REPORTE
-    cout << "\n📊 FASE 4: GENERACIÓN DE REPORTE\n";
-    cout << "===============================\n";
-    
-    string nombreArchivo;
-    cout << "Ingrese nombre para el reporte (o Enter para 'reporte_tesla.txt'): ";
-    cin.ignore();
-    getline(cin, nombreArchivo);
-    
-    if (nombreArchivo.empty()) {
-        nombreArchivo = "reporte_tesla.txt";
-    } else if (nombreArchivo.find(".txt") == string::npos) {
-        nombreArchivo += ".txt";
-    }
-    
-    generarReporteTXT(gestorTareas.logEjecucion, 
-                     gestorTareas.cpuTotalUtilizado,
-                     gestorTareas.getTareasEjecutadas(),
-                     gestorTareas.getTareasPendientes(),
-                     nombreArchivo);
-    
-    cout << "\n==========================================\n";
-    cout << "✅ SISTEMA COMPLETADO EXITOSAMENTE\n";
-    cout << "   Reporte guardado: " << nombreArchivo << "\n";
-    cout << "==========================================\n\n";
-    
-    cout << "Presione Enter para continuar...";
-    cin.get();
-}
-
-// =============================================
-// FUNCIÓN MAIN
-// =============================================
-int main() {
-    sistemaGestionRecursos();
     return 0;
 }
