@@ -7,7 +7,7 @@ using namespace std;
 class Tarea {
 public:
     string nombre;
-    int prioridad;  // 1-10 (10 = máxima prioridad)
+    int prioridad;  // 1-10 (10 = maxima prioridad)
     int cpu_necesario;
     
     Tarea(string n, int p, int cpu) {
@@ -53,7 +53,7 @@ public:
     void insertar(Tarea tarea) {
         Nodo* nuevoNodo = new Nodo(tarea);
         raiz = mezclar(raiz, nuevoNodo);
-        cout << "✅ Tarea INSERTADA: " << tarea.nombre << " (Prioridad: " << tarea.prioridad << ")" << endl;
+        cout << "Tarea INSERTADA: " << tarea.nombre << " (Prioridad: " << tarea.prioridad << ")" << endl;
     }
     
     Tarea extraerMaxima() {
@@ -63,7 +63,7 @@ public:
         
         Tarea maxima = raiz->tarea;
         raiz = mezclar(raiz->izquierdo, raiz->derecho);
-        cout << "🎯 EJECUTANDO: " << maxima.nombre << " (Prioridad: " << maxima.prioridad << ")" << endl;
+        cout << "EJECUTANDO: " << maxima.nombre << " (Prioridad: " << maxima.prioridad << ")" << endl;
         return maxima;
     }
     
@@ -72,41 +72,41 @@ public:
     }
 };
 
-// FUNCIÓN RECURSIVA (TU SEGUNDO ALGORITMO)
+// FUNCION RECURSIVA (TU SEGUNDO ALGORITMO)
 void procesarTareaRecursivo(string nombreTarea, int nivel = 0) {
     string indentacion(nivel * 2, ' ');
-    cout << indentacion << "🔁 PROCESANDO: " << nombreTarea << endl;
+    cout << indentacion << "PROCESANDO: " << nombreTarea << endl;
     
-    if (nombreTarea == "Esquivar Obstáculo") {
+    if (nombreTarea == "Esquivar Obstaculo") {
         procesarTareaRecursivo("Calcular Trayectoria", nivel + 1);
-        procesarTareaRecursivo("Preparar Dirección", nivel + 1);
+        procesarTareaRecursivo("Preparar Direccion", nivel + 1);
         procesarTareaRecursivo("Ajustar Velocidad", nivel + 1);
     }
     
-    cout << indentacion << "✅ COMPLETADO: " << nombreTarea << endl;
+    cout << indentacion << "COMPLETADO: " << nombreTarea << endl;
 }
 
-// TU FUNCIÓN PRINCIPAL
+// TU FUNCION PRINCIPAL
 void sistemaGestionRecursos() {
     cout << "==========================================" << endl;
-    cout << "🚗 SISTEMA DE ASIGNACIÓN DE RECURSOS TESLA" << endl;
+    cout << "SISTEMA DE ASIGNACION DE RECURSOS TESLA" << endl;
     cout << "==========================================" << endl;
     
     SkewHeap gestorTareas;
     
     cout << "\n1. INSERTANDO TAREAS:" << endl;
-    gestorTareas.insertar(Tarea("Reproducir Música", 2, 5));
-    gestorTareas.insertar(Tarea("Navegación", 6, 15));
-    gestorTareas.insertar(Tarea("Detección de Peatón", 10, 30));
+    gestorTareas.insertar(Tarea("Reproducir Musica", 2, 5));
+    gestorTareas.insertar(Tarea("Navegacion", 6, 15));
+    gestorTareas.insertar(Tarea("Deteccion de Peaton", 10, 30));
     gestorTareas.insertar(Tarea("Control de Frenos", 10, 25));
     
-    cout << "\n2. EJECUCIÓN POR PRIORIDAD:" << endl;
+    cout << "\n2. EJECUCION POR PRIORIDAD:" << endl;
     while (!gestorTareas.estaVacia()) {
         gestorTareas.extraerMaxima();
     }
     
-    cout << "\n3. DEMOSTRACIÓN RECURSIVIDAD:" << endl;
-    procesarTareaRecursivo("Esquivar Obstáculo");
+    cout << "\n3. DEMOSTRACION RECURSIVIDAD:" << endl;
+    procesarTareaRecursivo("Esquivar Obstaculo");
     
     cout << "\nPresiona Enter para continuar...";
     cin.get();
